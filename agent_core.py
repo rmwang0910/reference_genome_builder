@@ -296,6 +296,92 @@ class ReferenceGenomeAgent:
         # 简单的关键词匹配
         request_lower = user_request.lower()
         
+        # 特殊场景 1：用户明确提到 toy / 小基因组 / 测试 且要求不要下载
+        # 这里我们假设用户已经在工作目录准备好了一个小的参考基因组文件，
+        # 路径可以通过环境变量 REFBUILDER_TOY_GENOME 配置，默认使用 toy.fa。
+        if (
+            ('toy' in request_lower or '小基因组' in request_lower or 'mini' in request_lower or '测试' in request_lower)
+            and ('不要下载' in request_lower or '不下载' in request_lower or '无需下载' in request_lower)
+        ):
+            genome_path = os.getenv("REFBUILDER_TOY_GENOME", "toy.fa")
+            
+            # 检测索引工具（默认还是 bwa）
+            tools = []
+            if 'bwa' in request_lower:
+                tools.append('bwa')
+            if 'bowtie2' in request_lower or 'bowtie' in request_lower:
+                tools.append('bowtie2')
+            if 'star' in request_lower:
+                tools.append('star')
+            if 'hisat2' in request_lower:
+                tools.append('hisat2')
+            if 'minimap2' in request_lower or 'minimap' in request_lower:
+                tools.append('minimap2')
+            if not tools:
+                tools = ['bwa']
+            
+            for i, tool in enumerate(tools, 1):
+                task = Task(
+                    id=f'task_{i}',
+                    name=f'构建{tool}索引（toy基因组）',
+                    description=f'使用{tool}为本地 toy 基因组构建索引（{genome_path}）',
+                    status=TaskStatus.PENDING
+                )
+                task.tool = 'build_index'
+                task.parameters = {
+                    'genome_fasta': genome_path,
+                    'tool': tool,
+                    'threads': 4
+                }
+                tasks.append(task)
+            
+            logger.info(f"基于规则规划了 {len(tasks)} 个 toy 基因组任务（不进行下载）")
+            return tasks
+        
+        # 特殊场景 2：大肠杆菌 / E.coli 等非内置物种
+        # 规则：不尝试从远程下载，而是认为用户已经在本地准备好 E.coli 参考基因组，
+        # 使用环境变量 REFBUILDER_ECOLI_GENOME 或 REFBUILDER_CUSTOM_GENOME 指定路径，默认 ecoli.fa。
+        if ('大肠杆菌' in request_lower) or ('e.coli' in request_lower) or ('ecoli' in request_lower):
+            genome_path = (
+                os.getenv("REFBUILDER_ECOLI_GENOME")
+                or os.getenv("REFBUILDER_CUSTOM_GENOME")
+                or "ecoli.fa"
+            )
+            
+            # 工具选择：如果用户提到 star / hisat2，则认为是 RNA-seq；否则默认 bwa
+            tools = []
+            if 'star' in request_lower:
+                tools.append('star')
+            if 'hisat2' in request_lower:
+                tools.append('hisat2')
+            if 'bwa' in request_lower:
+                tools.append('bwa')
+            if not tools:
+                # 根据是否提到 rna/转录组 来默认选择
+                if 'rna' in request_lower or '转录组' in request_lower:
+                    tools = ['star']
+                else:
+                    tools = ['bwa']
+            
+            for i, tool in enumerate(tools, 1):
+                task = Task(
+                    id=f'task_{i}',
+                    name=f'构建{tool}索引（E.coli 基因组）',
+                    description=f'使用{tool}为本地 E.coli 参考基因组构建索引（{genome_path}）',
+                    status=TaskStatus.PENDING
+                )
+                task.tool = 'build_index'
+                task.parameters = {
+                    'genome_fasta': genome_path,
+                    'tool': tool,
+                    'threads': 4
+                }
+                tasks.append(task)
+            
+            logger.info(f"基于规则规划了 {len(tasks)} 个 E.coli 基因组任务（不进行下载）")
+            return tasks
+        
+        # 一般场景：需要下载内置的人/小鼠参考基因组
         # 检测物种
         species = 'human'
         if 'mouse' in request_lower or '小鼠' in request_lower:
