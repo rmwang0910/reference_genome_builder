@@ -1,0 +1,36 @@
+# 参考基因组构建智能体配置文件示例
+# 复制此文件为 config.yaml 并根据需要修改
+
+# 工作目录配置
+work_dir: "."
+genomes_dir: "genomes"
+indices_dir: "indices"
+
+# 下载配置
+download:
+  # 默认数据源: ncbi_refseq, ensembl, ucsc
+  default_source: "ncbi_refseq"
+  # 是否自动解压缩
+  auto_decompress: true
+  # 下载超时时间（秒）
+  timeout: 300
+  # 是否验证校验和
+  verify_checksum: false
+
+# 索引构建配置
+index:
+  # 默认线程数
+  default_threads: 4
+  # STAR 索引配置
+  star:
+    sjdb_overhang: 100
+    genome_sa_index_n_bases: 14
+  # 默认构建的索引工具列表
+  default_tools:
+    - bwa
+    - bowtie2
+
+# 日志配置
+logging:
+  level: "INFO"  # DEBUG, INFO, WARNING, ERROR
+  format: "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
