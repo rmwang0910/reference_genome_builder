@@ -132,7 +132,7 @@ class IndexBuilder:
         
         Args:
             prefix: 索引文件前缀，如果为None则使用genome_fasta的basename
-            threads: 线程数
+            threads: 线程数（注意：BWA index命令不支持多线程，此参数会被忽略）
             
         Returns:
             索引文件路径（.bwt文件）
@@ -154,10 +154,13 @@ class IndexBuilder:
         logger.info(f"开始构建BWA索引: {self.genome_fasta}")
         logger.info(f"索引前缀: {index_prefix}")
         
+        # BWA index 命令不支持多线程，忽略 threads 参数
+        if threads > 1:
+            logger.info(f"注意：BWA index 命令不支持多线程，将使用单线程构建索引")
+        
         try:
+            # BWA index 命令不支持 -t 参数，只使用基本命令
             cmd = ['bwa', 'index', '-p', str(index_prefix), str(self.genome_fasta)]
-            if threads > 1:
-                cmd.extend(['-t', str(threads)])
             
             logger.info(f"执行命令: {' '.join(cmd)}")
             result = subprocess.run(cmd, check=True, capture_output=True, text=True)
@@ -254,6 +257,8 @@ class IndexBuilder:
         
         logger.info(f"开始构建STAR索引: {self.genome_fasta}")
         logger.info(f"索引目录: {index_dir}")
+        logger.info(f"sjdb_gtf_file: {sjdb_gtf_file}")
+        logger.info(f"sjdb_overhang: {sjdb_overhang}")
         
         # 构建命令
         cmd = [
@@ -290,6 +295,7 @@ class IndexBuilder:
                     f"未提供GTF注释文件，忽略 sjdb_overhang={sjdb_overhang} 参数。"
                     "STAR在没有注释文件时不能使用 --sjdbOverhang 参数。"
                 )
+            logger.info("未提供GTF注释文件，构建基础STAR索引（不包含splice junction信息）")
         
         try:
             logger.info(f"执行命令: {' '.join(cmd)}")
@@ -422,9 +428,12 @@ class IndexBuilder:
                 elif tool == 'bowtie2':
                     index_path = self.build_bowtie2_index(threads=threads)
                 elif tool == 'star':
-                    sjdb_overhang = kwargs.get('sjdb_overhang', 100)
+                    # 只有当提供了GTF文件时，才使用sjdb_overhang
+                    sjdb_gtf_file = kwargs.get('sjdb_gtf_file', None)
+                    sjdb_overhang = kwargs.get('sjdb_overhang', None) if sjdb_gtf_file else None
                     genome_sa_index_n_bases = kwargs.get('genome_sa_index_n_bases', 14)
                     index_path = self.build_star_index(
+                        sjdb_gtf_file=sjdb_gtf_file,
                         sjdb_overhang=sjdb_overhang,
                         threads=threads,
                         genome_sa_index_n_bases=genome_sa_index_n_bases
