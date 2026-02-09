@@ -209,7 +209,27 @@ class ReferenceGenomeAgent:
         
         # 索引构建工具
         def build_index_tool(genome_fasta: str, tool: str, **kwargs):
-            builder = IndexBuilder(Path(genome_fasta), output_dir=self.indices_dir)
+            # 处理路径：如果是相对路径，尝试在 genomes_dir 中查找
+            genome_path_obj = Path(genome_fasta)
+            if not genome_path_obj.is_absolute():
+                # 相对路径，尝试在 genomes_dir 中查找
+                potential_path = self.genomes_dir / genome_path_obj
+                if potential_path.exists():
+                    genome_path_obj = potential_path
+                else:
+                    # 如果不在 genomes_dir，尝试相对于工作目录
+                    genome_path_obj = (self.work_dir / genome_path_obj).resolve()
+            else:
+                genome_path_obj = genome_path_obj.resolve()
+            
+            if not genome_path_obj.exists():
+                raise FileNotFoundError(
+                    f"参考基因组文件不存在: {genome_fasta}\n"
+                    f"尝试的路径: {genome_path_obj}\n"
+                    f"请检查文件路径是否正确。已下载的文件在: {self.genomes_dir}"
+                )
+            
+            builder = IndexBuilder(genome_path_obj, output_dir=self.indices_dir)
             if tool == 'bwa':
                 return builder.build_bwa_index(**kwargs)
             elif tool == 'bowtie2':
