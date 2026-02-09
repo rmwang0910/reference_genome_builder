@@ -23,19 +23,13 @@ from datetime import datetime
 
 logger = logging.getLogger(__name__)
 
-# 尝试导入 LLM 相关模块
+# 导入本地 LLM 客户端
 try:
-    # 添加 BioLitKG 路径（如果存在）
-    biolitkg_path = Path(__file__).parent.parent.parent / "AI" / "BioLitKG"
-    if biolitkg_path.exists() and str(biolitkg_path) not in sys.path:
-        sys.path.insert(0, str(biolitkg_path))
-    
-    from core.llm.openai import OpenAIProvider
-    from core.config import get_config
+    from llm_client import LLMClient, create_llm_client
     HAS_LLM = True
-except ImportError:
+except ImportError as e:
     HAS_LLM = False
-    logger.warning("LLM模块不可用，将使用基于规则的决策")
+    logger.error(f"无法导入 LLM 客户端: {e}")
 
 
 class TaskStatus(Enum):
@@ -122,8 +116,18 @@ class ReferenceGenomeAgent:
         
         Args:
             work_dir: 工作目录
-            use_llm: 是否使用LLM进行智能决策
+            use_llm: 是否使用LLM进行智能决策（必须为True，否则会抛出异常）
         """
+        if not use_llm:
+            raise ValueError("use_llm 必须为 True，规则模式已被移除")
+        
+        if not HAS_LLM:
+            raise ImportError(
+                "LLM 模块不可用。请确保：\n"
+                "1. 已安装 openai 库: pip install openai\n"
+                "2. 已设置 LLM_API_KEY 环境变量"
+            )
+        
         if work_dir is None:
             self.work_dir = Path.cwd()
         else:
@@ -136,28 +140,26 @@ class ReferenceGenomeAgent:
         # 初始化状态
         self.state = AgentState()
         
-        # 初始化LLM（如果可用）
-        self.use_llm = use_llm and HAS_LLM
-        self.llm_client = None
-        
-        if self.use_llm:
-            try:
-                config = get_config()
-                if config.llm.api_key:
-                    self.llm_client = OpenAIProvider(config.llm)
-                    logger.info("LLM已初始化，启用智能决策")
-                else:
-                    logger.warning("未设置 LLM_API_KEY，将使用基于规则的决策")
-                    self.use_llm = False
-            except Exception as e:
-                logger.warning(f"无法初始化LLM: {e}，将使用基于规则的决策")
-                self.use_llm = False
+        # 初始化LLM（必须成功）
+        self.use_llm = True
+        try:
+            self.llm_client = LLMClient()
+            logger.info("LLM已初始化，启用智能决策")
+        except Exception as e:
+            logger.error(f"无法初始化LLM: {e}")
+            raise ValueError(
+                f"LLM 初始化失败: {e}\n"
+                "请确保已设置以下环境变量：\n"
+                "  - LLM_API_KEY: API 密钥\n"
+                "  - LLM_BASE_URL: API 基础 URL（可选，默认 OpenAI）\n"
+                "  - LLM_MODEL: 模型名称（可选，默认 gpt-3.5-turbo）"
+            )
         
         # 注册工具
         self.tools = self._register_tools()
         
         logger.info(f"智能体初始化完成，工作目录: {self.work_dir}")
-        logger.info(f"LLM模式: {'启用' if self.use_llm else '禁用'}")
+        logger.info(f"LLM模式: 启用（统一使用LLM，规则模式已移除）")
     
     def _register_tools(self) -> Dict[str, Callable]:
         """注册可用工具"""
@@ -200,7 +202,7 @@ class ReferenceGenomeAgent:
     
     def plan_task(self, user_request: str) -> List[Task]:
         """
-        使用LLM规划任务
+        使用LLM规划任务（统一使用LLM，规则模式已移除）
         
         Args:
             user_request: 用户请求（自然语言）
@@ -208,89 +210,98 @@ class ReferenceGenomeAgent:
         Returns:
             任务列表
         """
-        if self.use_llm:
-            return self._plan_with_llm(user_request)
-        else:
-            return self._plan_with_rules(user_request)
+        return self._plan_with_llm(user_request)
     
     def _plan_with_llm(self, user_request: str) -> List[Task]:
-        """使用LLM规划任务"""
-        prompt = f"""你是一个参考基因组构建专家。根据用户的需求，规划出需要执行的任务步骤。
-
-用户需求: {user_request}
+        """使用LLM规划任务（统一使用LLM，不再回退到规则模式）"""
+        system_prompt = """你是一个参考基因组构建专家。你的任务是分析用户需求，规划出需要执行的任务步骤。
 
 可用的工具：
 1. download - 下载参考基因组
    - 参数: source (ncbi_refseq/ensembl/ucsc), species (human/mouse)
+   - 注意：对于非内置物种（如大肠杆菌、E.coli），如果用户没有明确要求下载，应该假设用户已有本地文件
 2. decompress - 解压缩文件
    - 参数: file_path
 3. build_index - 构建索引
    - 参数: genome_fasta, tool (bwa/bowtie2/star/hisat2/minimap2), threads
 
-请分析用户需求，规划出详细的任务步骤。每个任务应该包括：
+请仔细分析用户需求，规划出详细的任务步骤。每个任务应该包括：
 - id: 任务ID（如 task_1, task_2）
 - name: 任务名称
 - description: 任务描述
 - tool: 使用的工具名称
 - parameters: 工具参数（字典格式）
 
-请以JSON格式输出，格式如下：
-{{
-  "tasks": [
-    {{
-      "id": "task_1",
-      "name": "下载参考基因组",
-      "description": "从NCBI RefSeq下载人类参考基因组",
-      "tool": "download",
-      "parameters": {{"source": "ncbi_refseq", "species": "human"}}
-    }},
-    {{
-      "id": "task_2",
-      "name": "解压缩文件",
-      "description": "解压缩下载的参考基因组文件",
-      "tool": "decompress",
-      "parameters": {{"file_path": "{{task_1.result}}"}}
-    }}
-  ]
-}}
-
-注意：
+重要提示：
+- 如果用户提到"大肠杆菌"、"E.coli"、"ecoli"等，且没有明确要求下载，应该假设用户已有本地基因组文件
+  - 可以使用环境变量 REFBUILDER_ECOLI_GENOME 或 REFBUILDER_CUSTOM_GENOME 指定的路径
+  - 如果没有环境变量，使用默认路径 "ecoli.fa"
 - 如果用户没有指定数据源，推荐使用 ncbi_refseq（最常用）
 - 如果用户没有指定索引工具，根据用途推荐：
   - WGS/WES: bwa 或 bowtie2
   - RNA-seq: star 或 hisat2
   - 长读长: minimap2
 - 使用 {{task_X.result}} 引用前一个任务的结果
-"""
+- 对于本地文件，genome_fasta 参数应该使用实际的文件路径，而不是 {{task_X.result}}"""
+        
+        prompt = f"""用户需求: {user_request}
+
+请以JSON格式输出任务规划，格式如下：
+{{
+  "tasks": [
+    {{
+      "id": "task_1",
+      "name": "任务名称",
+      "description": "任务描述",
+      "tool": "工具名称",
+      "parameters": {{"参数名": "参数值"}}
+    }}
+  ]
+}}
+
+只返回JSON，不要包含其他文本。"""
         
         try:
-            response = self.llm_client.generate(prompt, max_tokens=2000)
+            # 使用 generate_json 方法直接获取 JSON
+            plan_data = self.llm_client.generate_json(
+                prompt=prompt,
+                system_prompt=system_prompt,
+                max_tokens=2000
+            )
             
-            # 解析JSON响应
-            json_match = re.search(r'\{.*\}', response, re.DOTALL)
-            if json_match:
-                plan_data = json.loads(json_match.group())
-                tasks = []
-                for task_data in plan_data.get('tasks', []):
-                    task = Task(
-                        id=task_data['id'],
-                        name=task_data['name'],
-                        description=task_data['description'],
-                        status=TaskStatus.PENDING,
-                        result=None
-                    )
-                    task.tool = task_data.get('tool')
-                    task.parameters = task_data.get('parameters', {})
-                    tasks.append(task)
-                
-                logger.info(f"LLM规划了 {len(tasks)} 个任务")
-                return tasks
+            tasks = []
+            for task_data in plan_data.get('tasks', []):
+                task = Task(
+                    id=task_data['id'],
+                    name=task_data['name'],
+                    description=task_data['description'],
+                    status=TaskStatus.PENDING,
+                    result=None
+                )
+                task.tool = task_data.get('tool')
+                task.parameters = task_data.get('parameters', {})
+                tasks.append(task)
+            
+            logger.info(f"LLM规划了 {len(tasks)} 个任务")
+            return tasks
+            
         except Exception as e:
-            logger.error(f"LLM规划失败: {e}，使用基于规则的规划")
-            return self._plan_with_rules(user_request)
+            logger.error(f"LLM规划失败: {e}")
+            raise ValueError(
+                f"无法使用LLM规划任务: {e}\n"
+                "请检查：\n"
+                "1. LLM_API_KEY 是否正确设置\n"
+                "2. 网络连接是否正常\n"
+                "3. API 服务是否可用"
+            )
     
     def _plan_with_rules(self, user_request: str) -> List[Task]:
-        """基于规则的任务规划"""
+        """
+        基于规则的任务规划（已废弃，不再使用）
+        
+        注意：此方法已不再被调用，统一使用 LLM 进行任务规划。
+        保留此方法仅用于参考。
+        """
         tasks = []
         
         # 简单的关键词匹配
@@ -458,7 +469,7 @@ class ReferenceGenomeAgent:
     
     def recommend_solution(self, use_case: str) -> Dict[str, Any]:
         """
-        根据使用场景推荐最佳方案
+        根据使用场景推荐最佳方案（统一使用LLM）
         
         Args:
             use_case: 使用场景描述（如 "WGS分析", "RNA-seq分析"）
@@ -466,44 +477,62 @@ class ReferenceGenomeAgent:
         Returns:
             推荐方案字典
         """
-        if self.use_llm:
-            return self._recommend_with_llm(use_case)
-        else:
-            return self._recommend_with_rules(use_case)
+        return self._recommend_with_llm(use_case)
     
     def _recommend_with_llm(self, use_case: str) -> Dict[str, Any]:
-        """使用LLM推荐方案"""
-        prompt = f"""你是一个生物信息学专家。根据用户的使用场景，推荐最佳的参考基因组数据源和索引工具。
+        """使用LLM推荐方案（统一使用LLM，不再回退到规则模式）"""
+        system_prompt = """你是一个生物信息学专家。你的任务是根据用户的使用场景，推荐最佳的参考基因组数据源和索引工具。
 
-使用场景: {use_case}
+可用的数据源：
+- ncbi_refseq: 官方参考序列数据库，最常用
+- ensembl: 欧洲生物信息学研究所维护，适合RNA-seq分析
+- ucsc: 加州大学圣克鲁兹分校维护
 
-请推荐：
-1. 最佳数据源（ncbi_refseq/ensembl/ucsc）及理由
-2. 最佳索引工具（bwa/bowtie2/star/hisat2/minimap2）及理由
-3. 推荐的参数设置
+可用的索引工具：
+- bwa: 短读长序列比对，适合WGS、WES、ChIP-seq
+- bowtie2: 超快速短读长序列比对，适合WGS、WES
+- star: RNA-seq比对的最佳工具
+- hisat2: RNA-seq比对，内存占用更小
+- minimap2: 长读长序列比对，适合PacBio、Nanopore数据
 
-请以JSON格式输出：
+请根据使用场景，推荐最合适的数据源和工具，并提供理由。"""
+        
+        prompt = f"""使用场景: {use_case}
+
+请以JSON格式输出推荐方案：
 {{
-  "source": "ncbi_refseq",
-  "source_reason": "理由",
-  "tools": ["bwa"],
-  "tools_reason": "理由",
+  "source": "数据源名称",
+  "source_reason": "选择理由",
+  "tools": ["工具列表"],
+  "tools_reason": "工具选择理由",
   "parameters": {{"threads": 8, "sjdb_overhang": 100}}
 }}
-"""
+
+只返回JSON，不要包含其他文本。"""
         
         try:
-            response = self.llm_client.generate(prompt, max_tokens=1000)
-            json_match = re.search(r'\{.*\}', response, re.DOTALL)
-            if json_match:
-                return json.loads(json_match.group())
+            return self.llm_client.generate_json(
+                prompt=prompt,
+                system_prompt=system_prompt,
+                max_tokens=1000
+            )
         except Exception as e:
             logger.error(f"LLM推荐失败: {e}")
-        
-        return self._recommend_with_rules(use_case)
+            raise ValueError(
+                f"无法使用LLM生成推荐方案: {e}\n"
+                "请检查：\n"
+                "1. LLM_API_KEY 是否正确设置\n"
+                "2. 网络连接是否正常\n"
+                "3. API 服务是否可用"
+            )
     
     def _recommend_with_rules(self, use_case: str) -> Dict[str, Any]:
-        """基于规则的推荐"""
+        """
+        基于规则的推荐（已废弃，不再使用）
+        
+        注意：此方法已不再被调用，统一使用 LLM 进行推荐。
+        保留此方法仅用于参考。
+        """
         use_case_lower = use_case.lower()
         
         # 默认推荐

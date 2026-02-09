@@ -34,9 +34,6 @@ def main():
   # 指定工作目录
   python agent_main.py "下载人类参考基因组并构建BWA索引" --work-dir /path/to/workdir
 
-  # 禁用LLM（使用基于规则的决策）
-  python agent_main.py "下载小鼠参考基因组" --no-llm
-
   # 获取推荐方案
   python agent_main.py --recommend "WGS全基因组测序分析"
         """
@@ -44,13 +41,12 @@ def main():
     
     parser.add_argument('request', nargs='?', help='用户请求（自然语言）')
     parser.add_argument('--work-dir', default='.', help='工作目录（默认: 当前目录）')
-    parser.add_argument('--no-llm', action='store_true', help='禁用LLM，使用基于规则的决策')
     parser.add_argument('--recommend', help='获取使用场景的推荐方案')
     
     args = parser.parse_args()
     
-    # 创建智能体
-    agent = ReferenceGenomeAgent(work_dir=args.work_dir, use_llm=not args.no_llm)
+    # 创建智能体（统一使用LLM）
+    agent = ReferenceGenomeAgent(work_dir=args.work_dir, use_llm=True)
     
     try:
         if args.recommend:

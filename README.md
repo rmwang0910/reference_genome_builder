@@ -330,21 +330,39 @@ python agent_main.py "我需要为RNA-seq分析准备人类参考基因组和STA
 
 详细架构说明请参考：[ARCHITECTURE.md](ARCHITECTURE.md)
 
-### LLM配置（可选）
+### LLM配置（必需）
 
-智能体模式支持LLM增强决策。如果未配置LLM，会自动降级到基于规则的决策。
+智能体模式**统一使用LLM**进行智能决策，不再支持规则模式。
 
-配置LLM（使用BioLitKG）：
+**配置LLM（必需）**：
+
+1. 安装依赖：
 ```bash
+pip install openai
+```
+
+2. 设置环境变量：
+```bash
+# 必需：API 密钥
 export LLM_API_KEY='your-api-key'
-export LLM_BASE_URL='https://dashscope.aliyuncs.com/compatible-mode/v1'
-export LLM_MODEL='qwen-plus'
+
+# 可选：API 基础 URL（默认使用 OpenAI）
+export LLM_BASE_URL='https://dashscope.aliyuncs.com/compatible-mode/v1'  # 阿里云 DashScope
+# 或
+export LLM_BASE_URL='https://api.openai.com/v1'  # OpenAI（默认）
+
+# 可选：模型名称（默认 gpt-3.5-turbo）
+export LLM_MODEL='qwen-plus'  # 阿里云 DashScope
+# 或
+export LLM_MODEL='gpt-4'  # OpenAI
 ```
 
-禁用LLM（使用规则决策）：
-```bash
-python agent_main.py "下载人类参考基因组" --no-llm
-```
+**支持的 LLM 服务**：
+- OpenAI API（默认）
+- 阿里云 DashScope（兼容模式）
+- 其他 OpenAI 兼容的 API 服务
+
+**注意**：如果未配置 LLM，程序将无法运行并提示错误。
 
 ## 更新日志
 

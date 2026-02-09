@@ -4,5 +4,8 @@
 requests>=2.31.0
 tqdm>=4.66.0
 
+# LLM 依赖（必需）
+openai>=1.0.0
+
 # 可选依赖（用于高级功能）
 # biopython>=1.81  # 如果需要处理FASTA文件
