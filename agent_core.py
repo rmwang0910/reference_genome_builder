@@ -168,10 +168,16 @@ class ReferenceGenomeAgent:
         
         tools = {}
         
-        # 下载工具
+        # 下载工具（从预定义数据源下载，仅支持human和mouse）
         def download_tool(source: str, species: str, **kwargs):
             downloader = ReferenceGenomeDownloader(output_dir=str(self.genomes_dir))
             return downloader.download_from_source(source, species)
+        
+        # 从URL下载工具（支持任意物种）
+        def download_from_url_tool(url: str, output_filename: Optional[str] = None, **kwargs):
+            """从URL下载参考基因组，支持任意物种"""
+            downloader = ReferenceGenomeDownloader(output_dir=str(self.genomes_dir))
+            return downloader.download_from_url(url, output_filename)
         
         # 解压缩工具
         def decompress_tool(file_path: str, **kwargs):
@@ -195,6 +201,7 @@ class ReferenceGenomeAgent:
                 raise ValueError(f"不支持的索引工具: {tool}")
         
         tools['download'] = download_tool
+        tools['download_from_url'] = download_from_url_tool
         tools['decompress'] = decompress_tool
         tools['build_index'] = build_index_tool
         
@@ -217,13 +224,27 @@ class ReferenceGenomeAgent:
         system_prompt = """你是一个参考基因组构建专家。你的任务是分析用户需求，规划出需要执行的任务步骤。
 
 可用的工具：
-1. download - 下载参考基因组
+1. download - 从预定义数据源下载参考基因组（仅支持human和mouse）
    - 参数: source (ncbi_refseq/ensembl/ucsc), species (human/mouse)
-   - 注意：对于非内置物种（如大肠杆菌、E.coli），如果用户没有明确要求下载，应该假设用户已有本地文件
-2. decompress - 解压缩文件
+   - 适用场景：human 和 mouse 这两个内置物种
+   
+2. download_from_url - 从URL下载参考基因组（支持任意物种）
+   - 参数: url (下载URL), output_filename (可选，输出文件名)
+   - 适用场景：所有其他物种（如 e.coli、大肠杆菌、ecoli、酵母、果蝇等）
+   - 你需要根据物种名称查找合适的下载URL
+   - 常见数据源URL模式：
+     * NCBI RefSeq: https://ftp.ncbi.nlm.nih.gov/genomes/all/GCF/.../..._genomic.fna.gz
+     * Ensembl: https://ftp.ensembl.org/pub/release-XXX/fasta/SPECIES/dna/...fa.gz
+     * 例如 E.coli (NCBI): https://ftp.ncbi.nlm.nih.gov/genomes/all/GCF/000/005/825/GCF_000005825.2_ASM582v2/GCF_000005825.2_ASM582v2_genomic.fna.gz
+     * 例如 E.coli (Ensembl): https://ftp.ensembl.org/pub/release-110/fasta/escherichia_coli_str_k_12_substr_mg1655_gca_000005825/dna/Escherichia_coli_str_k_12_substr_mg1655_gca_000005825.ASM584v2.dna.toplevel.fa.gz
+   
+3. decompress - 解压缩文件
    - 参数: file_path
-3. build_index - 构建索引
-   - 参数: genome_fasta, tool (bwa/bowtie2/star/hisat2/minimap2), threads
+   - 注意：如果文件已经是 .fa 或 .fasta 格式（未压缩），不需要此步骤
+   
+4. build_index - 构建索引
+   - 参数: genome_fasta (文件路径), tool (bwa/bowtie2/star/hisat2/minimap2), threads (可选，默认4)
+   - 注意：genome_fasta 可以是本地文件的绝对路径或相对路径
 
 请仔细分析用户需求，规划出详细的任务步骤。每个任务应该包括：
 - id: 任务ID（如 task_1, task_2）
@@ -232,19 +253,55 @@ class ReferenceGenomeAgent:
 - tool: 使用的工具名称
 - parameters: 工具参数（字典格式）
 
-重要提示：
-- 如果用户提到"大肠杆菌"、"E.coli"、"ecoli"等，且没有明确要求下载，应该假设用户已有本地基因组文件
-  - 可以使用环境变量 REFBUILDER_ECOLI_GENOME 或 REFBUILDER_CUSTOM_GENOME 指定的路径
-  - 如果没有环境变量，使用默认路径 "ecoli.fa"
-- 如果用户没有指定数据源，推荐使用 ncbi_refseq（最常用）
-- 如果用户没有指定索引工具，根据用途推荐：
-  - WGS/WES: bwa 或 bowtie2
-  - RNA-seq: star 或 hisat2
-  - 长读长: minimap2
-- 使用 {{task_X.result}} 引用前一个任务的结果
-- 对于本地文件，genome_fasta 参数应该使用实际的文件路径，而不是 {{task_X.result}}"""
+重要规则：
+1. 物种判断和工具选择：
+   - 如果用户提到 "human"、"人类"、"homo sapiens" → 使用 download 工具，source="ncbi_refseq" 或 "ensembl"，species="human"
+   - 如果用户提到 "mouse"、"小鼠"、"mus musculus" → 使用 download 工具，source="ncbi_refseq" 或 "ensembl"，species="mouse"
+   - 如果用户提到其他物种（如 "e.coli"、"大肠杆菌"、"ecoli"、"yeast"、"酵母"、"drosophila"、"果蝇" 等）：
+     * 优先使用 download_from_url 工具，查找并下载该物种的参考基因组
+     * 你需要根据你的知识或搜索能力，找到该物种在 NCBI RefSeq 或 Ensembl 的下载URL
+     * 如果无法找到URL，可以假设用户已有本地文件，使用环境变量或默认路径
+
+2. URL查找指南（对于非 human/mouse 物种）：
+   - NCBI RefSeq: 访问 https://www.ncbi.nlm.nih.gov/genome 搜索物种，找到参考基因组下载链接
+   - Ensembl: 访问 https://www.ensembl.org 搜索物种，在物种页面找到 "Download DNA sequence (FASTA)"
+   - 常见物种示例URL（你可以参考这些模式）：
+     * E.coli K-12 (NCBI): https://ftp.ncbi.nlm.nih.gov/genomes/all/GCF/000/005/825/GCF_000005825.2_ASM582v2/GCF_000005825.2_ASM582v2_genomic.fna.gz
+     * E.coli (Ensembl): https://ftp.ensembl.org/pub/release-110/fasta/escherichia_coli_str_k_12_substr_mg1655_gca_000005825/dna/Escherichia_coli_str_k_12_substr_mg1655_gca_000005825.ASM584v2.dna.toplevel.fa.gz
+
+3. 本地文件路径规则（仅当无法下载时使用）：
+   - 优先使用环境变量：
+     * REFBUILDER_ECOLI_GENOME（用于 e.coli）
+     * REFBUILDER_CUSTOM_GENOME（通用自定义基因组）
+     * REFBUILDER_TOY_GENOME（用于 toy/测试）
+   - 如果没有环境变量，使用默认路径：
+     * e.coli: "ecoli.fa"
+     * toy/测试: "toy.fa"
+     * 其他: 根据物种名称推断，如 "species_name.fa"
+
+4. 任务规划规则：
+   - 对于 human/mouse：task_1=download, task_2=decompress（如果需要）, task_3+=build_index
+   - 对于其他物种（优先下载）：task_1=download_from_url, task_2=decompress（如果需要）, task_3+=build_index
+   - 对于其他物种（无法下载，使用本地文件）：task_1=build_index（跳过 download 和 decompress）
+
+5. 索引工具选择：
+   - 如果用户没有指定，根据用途推荐：
+     * WGS/WES: bwa 或 bowtie2
+     * RNA-seq: star 或 hisat2
+     * 长读长: minimap2
+
+6. 参数引用：
+   - 使用 {{task_X.result}} 引用前一个任务的结果（用于 download/download_from_url → decompress → build_index 的流程）
+   - 对于直接使用本地文件的情况，genome_fasta 应该使用实际文件路径字符串，不要使用 {{task_X.result}}"""
         
         prompt = f"""用户需求: {user_request}
+
+⚠️ 关键提醒：
+- 对于 human 或 mouse：使用 download 工具（source + species）
+- 对于其他物种（如 e.coli、大肠杆菌、ecoli、yeast、酵母等）：
+  * 优先使用 download_from_url 工具，提供该物种的下载URL
+  * 你需要根据物种名称，查找 NCBI RefSeq 或 Ensembl 的下载链接
+  * 如果无法找到URL，可以假设用户已有本地文件，使用环境变量或默认路径
 
 请以JSON格式输出任务规划，格式如下：
 {{
@@ -574,6 +631,16 @@ class ReferenceGenomeAgent:
         task.status = TaskStatus.IN_PROGRESS
         
         try:
+            # 验证任务参数（download 工具只支持 human 和 mouse）
+            if task.tool == 'download':
+                species = task.parameters.get('species', '').lower()
+                if species not in ['human', 'mouse']:
+                    raise ValueError(
+                        f"download 工具只支持 species='human' 或 'mouse'，不支持 '{species}'。\n"
+                        f"对于非内置物种，请使用 download_from_url 工具，提供该物种的下载URL。\n"
+                        f"或者如果用户已有本地文件，可以直接使用 build_index 工具。"
+                    )
+            
             # 解析参数中的任务引用
             parameters = self._resolve_parameters(task.parameters)
             

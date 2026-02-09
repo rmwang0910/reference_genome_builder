@@ -167,8 +167,23 @@ work_dir/
 
 ### 支持的物种
 
+**内置支持（使用 download 工具）**：
 - **human**: 人类（Homo sapiens）
 - **mouse**: 小鼠（Mus musculus）
+
+**任意物种（使用 download_from_url 工具）**：
+- 支持从 NCBI RefSeq、Ensembl 等数据源下载任意物种的参考基因组
+- LLM 会自动查找并下载指定物种的参考基因组
+- 例如：E.coli、酵母、果蝇、拟南芥等
+
+**示例**：
+```bash
+# LLM 会自动查找 E.coli 的下载URL并下载
+python agent_main.py "我需要为RNA-seq分析准备大肠杆菌参考基因组和STAR索引"
+
+# LLM 会自动查找酵母的下载URL并下载
+python agent_main.py "下载酵母参考基因组并构建BWA索引"
+```
 
 ## 支持的索引工具
 
