@@ -257,7 +257,7 @@ class ReferenceGenomeAgent:
             # 处理路径：如果是相对路径，尝试在 genomes_dir 中查找
             genome_path_obj = Path(genome_fasta)
             if not genome_path_obj.is_absolute():
-                # 相对路径，尝试在 genomes_dir 中查找
+                # 相对路径，优先在 genomes_dir 中查找
                 potential_path = self.genomes_dir / genome_path_obj
                 if potential_path.exists():
                     genome_path_obj = potential_path
@@ -268,11 +268,22 @@ class ReferenceGenomeAgent:
                 genome_path_obj = genome_path_obj.resolve()
             
             if not genome_path_obj.exists():
-                raise FileNotFoundError(
-                    f"参考基因组文件不存在: {genome_fasta}\n"
-                    f"尝试的路径: {genome_path_obj}\n"
-                    f"请检查文件路径是否正确。已下载的文件在: {self.genomes_dir}"
-                )
+                # 兜底策略：如果 genomes_dir 下只有一个 .fa/.fna/.fasta 文件，则自动使用该文件
+                fasta_candidates = list(self.genomes_dir.glob("*.fa")) + \
+                                   list(self.genomes_dir.glob("*.fna")) + \
+                                   list(self.genomes_dir.glob("*.fasta"))
+                if len(fasta_candidates) == 1:
+                    logger.warning(
+                        f"参考基因组文件不存在: {genome_fasta}，但在 {self.genomes_dir} 中发现唯一的FASTA文件: "
+                        f"{fasta_candidates[0]}，将自动使用该文件作为 genome_fasta。"
+                    )
+                    genome_path_obj = fasta_candidates[0].resolve()
+                else:
+                    raise FileNotFoundError(
+                        f"参考基因组文件不存在: {genome_fasta}\n"
+                        f"尝试的路径: {genome_path_obj}\n"
+                        f"请检查文件路径是否正确。已下载的文件在: {self.genomes_dir}"
+                    )
             
             builder = IndexBuilder(genome_path_obj, output_dir=self.indices_dir)
             if tool == 'bwa':
