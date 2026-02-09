@@ -171,18 +171,41 @@ class ReferenceGenomeAgent:
         # 下载工具（从预定义数据源下载，仅支持human和mouse）
         def download_tool(source: str, species: str, **kwargs):
             downloader = ReferenceGenomeDownloader(output_dir=str(self.genomes_dir))
-            return downloader.download_from_source(source, species)
+            result_path = downloader.download_from_source(source, species)
+            # 返回绝对路径，确保后续任务能正确找到文件
+            return result_path.resolve()
         
         # 从URL下载工具（支持任意物种）
         def download_from_url_tool(url: str, output_filename: Optional[str] = None, **kwargs):
             """从URL下载参考基因组，支持任意物种"""
             downloader = ReferenceGenomeDownloader(output_dir=str(self.genomes_dir))
-            return downloader.download_from_url(url, output_filename)
+            result_path = downloader.download_from_url(url, output_filename)
+            # 返回绝对路径，确保后续任务能正确找到文件
+            return result_path.resolve()
         
         # 解压缩工具
         def decompress_tool(file_path: str, **kwargs):
             downloader = ReferenceGenomeDownloader(output_dir=str(self.genomes_dir))
-            return downloader.decompress_file(Path(file_path))
+            # 处理路径：如果是相对路径，尝试在 genomes_dir 中查找
+            file_path_obj = Path(file_path)
+            if not file_path_obj.is_absolute():
+                # 相对路径，尝试在 genomes_dir 中查找
+                potential_path = self.genomes_dir / file_path_obj
+                if potential_path.exists():
+                    file_path_obj = potential_path
+                else:
+                    # 如果不在 genomes_dir，尝试相对于工作目录
+                    file_path_obj = (self.work_dir / file_path_obj).resolve()
+            else:
+                file_path_obj = file_path_obj.resolve()
+            
+            if not file_path_obj.exists():
+                raise FileNotFoundError(
+                    f"文件不存在: {file_path_obj}\n"
+                    f"请检查文件路径是否正确。已下载的文件在: {self.genomes_dir}"
+                )
+            
+            return downloader.decompress_file(file_path_obj)
         
         # 索引构建工具
         def build_index_tool(genome_fasta: str, tool: str, **kwargs):
@@ -652,7 +675,11 @@ class ReferenceGenomeAgent:
             result = tool_func(**parameters)
             
             task.status = TaskStatus.COMPLETED
-            task.result = str(result) if isinstance(result, Path) else result
+            # 确保路径是绝对路径的字符串形式
+            if isinstance(result, Path):
+                task.result = str(result.resolve())
+            else:
+                task.result = result
             
             logger.info(f"任务完成: {task.name}")
             return result
