@@ -286,8 +286,19 @@ class ReferenceGenomeAgent:
    - 注意：如果文件已经是 .fa 或 .fasta 格式（未压缩），不需要此步骤
    
 4. build_index - 构建索引
-   - 参数: genome_fasta (文件路径), tool (bwa/bowtie2/star/hisat2/minimap2), threads (可选，默认4)
-   - 注意：genome_fasta 可以是本地文件的绝对路径或相对路径
+   - 参数: 
+     * genome_fasta (必需): 参考基因组FASTA文件路径
+     * tool (必需): 索引工具名称 (bwa/bowtie2/star/hisat2/minimap2)
+     * threads (可选): 线程数，默认4
+     * sjdb_overhang (可选): 仅用于STAR，当提供了sjdb_gtf_file时使用，通常为read长度-1
+     * sjdb_gtf_file (可选): 仅用于STAR，GTF/GFF注释文件路径
+     * genome_sa_index_n_bases (可选): 仅用于STAR，基因组SA索引碱基数，默认14
+   - 注意：
+     * genome_fasta 可以是本地文件的绝对路径或相对路径
+     * 对于STAR索引：
+       - 如果提供了 sjdb_gtf_file，可以同时提供 sjdb_overhang（推荐用于RNA-seq）
+       - 如果没有提供 sjdb_gtf_file，不能使用 sjdb_overhang 参数
+       - 对于没有注释文件的基因组（如细菌），构建STAR索引时不要提供 sjdb_overhang
 
 请仔细分析用户需求，规划出详细的任务步骤。每个任务应该包括：
 - id: 任务ID（如 task_1, task_2）
@@ -332,6 +343,15 @@ class ReferenceGenomeAgent:
      * WGS/WES: bwa 或 bowtie2
      * RNA-seq: star 或 hisat2
      * 长读长: minimap2
+   
+6. STAR索引特殊注意事项：
+   - 对于有注释文件的真核生物（如human、mouse），构建STAR索引时可以：
+     * 提供 sjdb_gtf_file 参数（GTF/GFF注释文件路径）
+     * 提供 sjdb_overhang 参数（通常为read长度-1，如100表示101bp reads）
+   - 对于没有注释文件的物种（如细菌、E.coli），构建STAR索引时：
+     * 不要提供 sjdb_gtf_file 参数
+     * 不要提供 sjdb_overhang 参数（STAR会报错）
+     * 只提供基本参数：genome_fasta, tool="star", threads
 
 6. 参数引用：
    - 使用 {{task_X.result}} 引用前一个任务的结果（用于 download/download_from_url → decompress → build_index 的流程）

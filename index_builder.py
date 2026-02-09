@@ -218,7 +218,9 @@ class IndexBuilder:
             raise
     
     def build_star_index(self, prefix: Optional[str] = None, 
-                        sjdb_overhang: int = 100, threads: int = 1,
+                        sjdb_overhang: Optional[int] = None, 
+                        sjdb_gtf_file: Optional[str] = None,
+                        threads: int = 1,
                         genome_sa_index_n_bases: int = 14) -> Path:
         """
         构建STAR索引
@@ -226,6 +228,9 @@ class IndexBuilder:
         Args:
             prefix: 索引目录名称，如果为None则使用genome_fasta的basename + "_star"
             sjdb_overhang: splice junction database overhang（通常为read长度-1）
+                         注意：只有当提供了 sjdb_gtf_file 时才需要此参数
+            sjdb_gtf_file: GTF/GFF注释文件路径（可选）
+                         如果提供，STAR会使用注释信息构建splice junction database
             threads: 线程数
             genome_sa_index_n_bases: 基因组SA索引的碱基数（对于大基因组需要调整）
             
@@ -249,19 +254,44 @@ class IndexBuilder:
         
         logger.info(f"开始构建STAR索引: {self.genome_fasta}")
         logger.info(f"索引目录: {index_dir}")
-        logger.info(f"SJDB overhang: {sjdb_overhang}")
+        
+        # 构建命令
+        cmd = [
+            'STAR',
+            '--runMode', 'genomeGenerate',
+            '--genomeDir', str(index_dir),
+            '--genomeFastaFiles', str(self.genome_fasta),
+            '--runThreadN', str(threads),
+            '--genomeSAindexNbases', str(genome_sa_index_n_bases)
+        ]
+        
+        # 只有当提供了GTF文件时，才添加sjdb相关参数
+        if sjdb_gtf_file:
+            gtf_path = Path(sjdb_gtf_file)
+            if not gtf_path.exists():
+                raise FileNotFoundError(f"GTF注释文件不存在: {sjdb_gtf_file}")
+            
+            cmd.extend(['--sjdbGTFfile', str(gtf_path)])
+            
+            # 如果提供了sjdb_overhang，添加该参数
+            if sjdb_overhang is not None:
+                cmd.extend(['--sjdbOverhang', str(sjdb_overhang)])
+                logger.info(f"SJDB overhang: {sjdb_overhang}")
+            else:
+                # 如果没有提供但需要GTF，使用默认值
+                cmd.extend(['--sjdbOverhang', '100'])
+                logger.info(f"SJDB overhang: 100 (默认值)")
+            
+            logger.info(f"使用GTF注释文件: {sjdb_gtf_file}")
+        else:
+            # 没有GTF文件时，不能使用sjdbOverhang
+            if sjdb_overhang is not None:
+                logger.warning(
+                    f"未提供GTF注释文件，忽略 sjdb_overhang={sjdb_overhang} 参数。"
+                    "STAR在没有注释文件时不能使用 --sjdbOverhang 参数。"
+                )
         
         try:
-            cmd = [
-                'STAR',
-                '--runMode', 'genomeGenerate',
-                '--genomeDir', str(index_dir),
-                '--genomeFastaFiles', str(self.genome_fasta),
-                '--sjdbOverhang', str(sjdb_overhang),
-                '--runThreadN', str(threads),
-                '--genomeSAindexNbases', str(genome_sa_index_n_bases)
-            ]
-            
             logger.info(f"执行命令: {' '.join(cmd)}")
             result = subprocess.run(cmd, check=True, capture_output=True, text=True)
             
