@@ -286,16 +286,29 @@ class ReferenceGenomeAgent:
                     )
             
             builder = IndexBuilder(genome_path_obj, output_dir=self.indices_dir)
+            
+            # 不同工具对参数的支持不同，这里做一下规范化
             if tool == 'bwa':
-                return builder.build_bwa_index(force=force, **kwargs)
+                # build_bwa_index 接受 threads, force
+                return builder.build_bwa_index(force=force, threads=kwargs.get('threads', 1))
             elif tool == 'bowtie2':
-                return builder.build_bowtie2_index(force=force, **kwargs)
+                # build_bowtie2_index 接受 threads, force
+                return builder.build_bowtie2_index(force=force, threads=kwargs.get('threads', 1))
             elif tool == 'star':
-                return builder.build_star_index(force=force, **kwargs)
+                # build_star_index 接受 sjdb_overhang, sjdb_gtf_file, threads, genome_sa_index_n_bases, force
+                return builder.build_star_index(
+                    sjdb_overhang=kwargs.get('sjdb_overhang'),
+                    sjdb_gtf_file=kwargs.get('sjdb_gtf_file'),
+                    threads=kwargs.get('threads', 1),
+                    genome_sa_index_n_bases=kwargs.get('genome_sa_index_n_bases', 14),
+                    force=force
+                )
             elif tool == 'hisat2':
-                return builder.build_hisat2_index(force=force, **kwargs)
+                # build_hisat2_index 接受 threads, force
+                return builder.build_hisat2_index(force=force, threads=kwargs.get('threads', 1))
             elif tool == 'minimap2':
-                return builder.build_minimap2_index(force=force, **kwargs)
+                # build_minimap2_index 目前不接受 threads，只接受 prefix/force，这里不传 threads
+                return builder.build_minimap2_index(force=force)
             else:
                 raise ValueError(f"不支持的索引工具: {tool}")
         
