@@ -42,8 +42,8 @@ class ReferenceGenomeAgent:
             self.work_dir = Path(work_dir)
             self.work_dir.mkdir(parents=True, exist_ok=True)
         
-        # 统一结果根目录：work_dir/results
-        self.results_root = self.work_dir / "results"
+        # 统一结果根目录：work_dir/outputs
+        self.results_root = self.work_dir / "outputs"
         self.results_root.mkdir(parents=True, exist_ok=True)
         
         # 兼容旧逻辑的回退目录（不推荐直接使用）
@@ -69,7 +69,8 @@ class ReferenceGenomeAgent:
             return f"{species}_{source}"
     
     def download_genome(self, source: str, species: str, 
-                       decompress: bool = True) -> Path:
+                       decompress: bool = True,
+                       force_download: bool = False) -> Path:
         """
         下载参考基因组
         
@@ -106,8 +107,8 @@ class ReferenceGenomeAgent:
         
         downloader = ReferenceGenomeDownloader(output_dir=str(self.genomes_dir))
         
-        # 下载压缩文件
-        compressed_file = downloader.download_from_source(source, species)
+        # 下载压缩文件（支持强制重新下载）
+        compressed_file = downloader.download_from_source(source, species, force=force_download)
         logger.info(f"下载完成: {compressed_file}")
         
         # 如果需要，解压缩
@@ -161,7 +162,9 @@ class ReferenceGenomeAgent:
             return compressed_file
     
     def build_index(self, genome_fasta: Path, tools: List[str], 
-                   threads: int = 1, **kwargs) -> dict:
+                   threads: int = 1,
+                   force_index: bool = False,
+                   **kwargs) -> dict:
         """
         构建参考基因组索引
         
@@ -211,7 +214,10 @@ class ReferenceGenomeAgent:
             raise RuntimeError("没有可用的索引工具")
         
         # 构建索引
-        results = builder.build_all_indices(tools=tools_to_build, threads=threads, **kwargs)
+        results = builder.build_all_indices(tools=tools_to_build,
+                                            threads=threads,
+                                            force=force_index,
+                                            **kwargs)
         
         # 打印结果摘要
         logger.info("\n索引构建结果:")
@@ -227,6 +233,8 @@ class ReferenceGenomeAgent:
                     decompress: bool = True, threads: int = 1,
                     with_annotation: bool = False,
                     annotation_format: str = "gtf",
+                    force_download: bool = False,
+                    force_index: bool = False,
                     **kwargs) -> dict:
         """
         运行完整流程：下载 + 构建索引
@@ -246,8 +254,13 @@ class ReferenceGenomeAgent:
         logger.info("参考基因组构建完整流程")
         logger.info("=" * 80)
         
-        # 1. 下载参考基因组
-        genome_fasta = self.download_genome(source, species, decompress=decompress)
+        # 1. 下载参考基因组（可选强制）
+        genome_fasta = self.download_genome(
+            source,
+            species,
+            decompress=decompress,
+            force_download=force_download
+        )
         
         # 2. （可选）下载注释文件
         annotation_path = None
@@ -263,8 +276,14 @@ class ReferenceGenomeAgent:
                 logger.warning(f"注释文件下载失败（不会中断索引构建）: {e}")
                 annotation_path = None
         
-        # 3. 构建索引
-        index_results = self.build_index(genome_fasta, tools, threads=threads, **kwargs)
+        # 3. 构建索引（可选强制）
+        index_results = self.build_index(
+            genome_fasta,
+            tools,
+            threads=threads,
+            force_index=force_index,
+            **kwargs
+        )
         
         # 4. 汇总结果
         results = {
@@ -326,6 +345,8 @@ def main():
                                help='工作目录（默认: 当前目录）')
     download_parser.add_argument('--no-decompress', action='store_true',
                                help='不解压缩下载的文件')
+    download_parser.add_argument('--force-download', action='store_true',
+                               help='强制重新下载，即使文件已存在')
     
     # download-annotation 命令
     download_ann_parser = subparsers.add_parser('download-annotation', help='下载基因注释文件（GTF/GFF）')
@@ -376,6 +397,10 @@ def main():
                                help='线程数（默认: 1）')
     pipeline_parser.add_argument('--no-decompress', action='store_true',
                                help='不解压缩下载的文件')
+    pipeline_parser.add_argument('--force-download', action='store_true',
+                               help='强制重新下载参考基因组')
+    pipeline_parser.add_argument('--force-index', action='store_true',
+                               help='强制重新构建索引（覆盖已有索引）')
     pipeline_parser.add_argument('--with-annotation', action='store_true',
                                help='同时下载注释文件（GTF/GFF）')
     pipeline_parser.add_argument('--annotation-format', default='gtf',
@@ -411,7 +436,8 @@ def main():
             genome_fasta = agent.download_genome(
                 args.source, 
                 args.species,
-                decompress=not args.no_decompress
+                decompress=not args.no_decompress,
+                force_download=args.force_download
             )
             logger.info(f"\n参考基因组已下载到: {genome_fasta}")
         
@@ -432,6 +458,7 @@ def main():
                 genome_fasta,
                 args.tools,
                 threads=args.threads,
+                force_index=False,
                 sjdb_overhang=args.sjdb_overhang,
                 genome_sa_index_n_bases=args.genome_sa_index_n_bases
             )
@@ -447,6 +474,8 @@ def main():
                 threads=args.threads,
                 with_annotation=args.with_annotation,
                 annotation_format=args.annotation_format,
+                force_download=args.force_download,
+                force_index=args.force_index,
                 sjdb_overhang=args.sjdb_overhang,
                 genome_sa_index_n_bases=args.genome_sa_index_n_bases
             )

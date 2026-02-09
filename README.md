@@ -143,19 +143,32 @@ python main.py pipeline --source ensembl --species human --tools bwa bowtie2 sta
 
 ## 目录结构
 
-运行后会在工作目录下创建以下目录结构：
+运行后会在工作目录下创建以下目录结构（**新的统一输出结构**）：
 
 ```
 work_dir/
-├── genomes/              # 下载的参考基因组文件
-│   ├── human_GRCh38.p14.fa.gz
-│   └── human_GRCh38.p14.fa
-├── indices/              # 构建的索引文件
-│   ├── human_GRCh38.p14.bwt      # BWA索引
-│   ├── human_GRCh38.p14.1.bt2    # Bowtie2索引
-│   └── human_GRCh38.p14_star/   # STAR索引目录
-└── build_results.json     # 构建结果记录
+├── outputs/                          # 所有结果统一放在此目录下
+│   ├── human_GRCh38.p14/             # 按物种+版本命名的结果目录（示例：人类 GRCh38.p14）
+│   │   ├── genome/                   # 下载的参考基因组文件
+│   │   │   ├── human_GRCh38.p14.fa.gz
+│   │   │   └── human_GRCh38.p14.fa
+│   │   ├── indices/                  # 构建的索引文件
+│   │   │   ├── human_GRCh38.p14.bwt        # BWA索引
+│   │   │   ├── human_GRCh38.p14.1.bt2      # Bowtie2索引
+│   │   │   └── human_GRCh38.p14_star/      # STAR索引目录
+│   │   └── annotation/               # 可选：注释文件（GTF/GFF）
+│   │       └── human_GRCh38.110.gtf
+│   └── mouse_GRCm39/                 # 小鼠参考基因组结果目录（结构同上）
+└── build_results.json                # （main.py pipeline 模式）构建结果记录
 ```
+
+**说明**：
+- 相同物种 + 相同版本（例如 `human_GRCh38.p14`）会复用同一个目录：
+  - 如果参考基因组已下载，则不会重复下载（除非设置强制下载）
+  - 如果索引文件已存在，则不会重复构建（除非设置强制重建）
+- 非内置物种（如 E.coli）会根据下载文件名推断目录名，例如：
+  - 下载文件：`ecoli_genomic.fna.gz`
+  - 结果目录：`outputs/ecoli_genomic/`
 
 ## 支持的数据源和物种
 

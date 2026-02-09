@@ -126,7 +126,8 @@ class IndexBuilder:
             logger.warning(f"检查工具 {tool} 时出错: {e}")
             return False
     
-    def build_bwa_index(self, prefix: Optional[str] = None, threads: int = 1) -> Path:
+    def build_bwa_index(self, prefix: Optional[str] = None, threads: int = 1,
+                        force: bool = False) -> Path:
         """
         构建BWA索引
         
@@ -148,8 +149,15 @@ class IndexBuilder:
         # 检查索引是否已存在
         bwt_file = index_prefix.with_suffix('.bwt')
         if bwt_file.exists():
-            logger.info(f"BWA索引已存在: {bwt_file}")
-            return bwt_file
+            if force:
+                logger.info(f"启用强制重建，删除已存在的BWA索引: {bwt_file}")
+                for suffix in ['.amb', '.ann', '.bwt', '.pac', '.sa']:
+                    p = index_prefix.with_suffix(suffix)
+                    if p.exists():
+                        p.unlink()
+            else:
+                logger.info(f"BWA索引已存在: {bwt_file}")
+                return bwt_file
         
         logger.info(f"开始构建BWA索引: {self.genome_fasta}")
         logger.info(f"索引前缀: {index_prefix}")
@@ -175,7 +183,8 @@ class IndexBuilder:
             logger.error(f"错误输出: {e.stderr}")
             raise
     
-    def build_bowtie2_index(self, prefix: Optional[str] = None, threads: int = 1) -> Path:
+    def build_bowtie2_index(self, prefix: Optional[str] = None, threads: int = 1,
+                            force: bool = False) -> Path:
         """
         构建Bowtie2索引
         
@@ -197,8 +206,15 @@ class IndexBuilder:
         # 检查索引是否已存在
         bt2_file = index_prefix.with_suffix('.1.bt2')
         if bt2_file.exists():
-            logger.info(f"Bowtie2索引已存在: {bt2_file}")
-            return bt2_file
+            if force:
+                logger.info(f"启用强制重建，删除已存在的Bowtie2索引: {bt2_file}")
+                for suffix in ['.1.bt2', '.2.bt2', '.3.bt2', '.4.bt2', '.rev.1.bt2', '.rev.2.bt2']:
+                    p = index_prefix.with_suffix(suffix)
+                    if p.exists():
+                        p.unlink()
+            else:
+                logger.info(f"Bowtie2索引已存在: {bt2_file}")
+                return bt2_file
         
         logger.info(f"开始构建Bowtie2索引: {self.genome_fasta}")
         logger.info(f"索引前缀: {index_prefix}")
@@ -224,7 +240,8 @@ class IndexBuilder:
                         sjdb_overhang: Optional[int] = None, 
                         sjdb_gtf_file: Optional[str] = None,
                         threads: int = 1,
-                        genome_sa_index_n_bases: int = 14) -> Path:
+                        genome_sa_index_n_bases: int = 14,
+                        force: bool = False) -> Path:
         """
         构建STAR索引
         
@@ -252,8 +269,13 @@ class IndexBuilder:
         # 检查索引是否已存在
         genome_file = index_dir / "Genome"
         if genome_file.exists():
-            logger.info(f"STAR索引已存在: {index_dir}")
-            return index_dir
+            if force:
+                logger.info(f"启用强制重建，删除已存在的STAR索引目录: {index_dir}")
+                shutil.rmtree(index_dir)
+                index_dir.mkdir(parents=True, exist_ok=True)
+            else:
+                logger.info(f"STAR索引已存在: {index_dir}")
+                return index_dir
         
         logger.info(f"开始构建STAR索引: {self.genome_fasta}")
         logger.info(f"索引目录: {index_dir}")
@@ -314,7 +336,8 @@ class IndexBuilder:
                 shutil.rmtree(index_dir)
             raise
     
-    def build_hisat2_index(self, prefix: Optional[str] = None, threads: int = 1) -> Path:
+    def build_hisat2_index(self, prefix: Optional[str] = None, threads: int = 1,
+                           force: bool = False) -> Path:
         """
         构建HISAT2索引
         
@@ -336,8 +359,15 @@ class IndexBuilder:
         # 检查索引是否已存在
         ht2_file = index_prefix.with_suffix('.1.ht2')
         if ht2_file.exists():
-            logger.info(f"HISAT2索引已存在: {ht2_file}")
-            return ht2_file
+            if force:
+                logger.info(f"启用强制重建，删除已存在的HISAT2索引: {ht2_file}")
+                for i in range(1, 9):
+                    p = index_prefix.with_suffix(f'.{i}.ht2')
+                    if p.exists():
+                        p.unlink()
+            else:
+                logger.info(f"HISAT2索引已存在: {ht2_file}")
+                return ht2_file
         
         logger.info(f"开始构建HISAT2索引: {self.genome_fasta}")
         logger.info(f"索引前缀: {index_prefix}")
@@ -359,7 +389,8 @@ class IndexBuilder:
             logger.error(f"错误输出: {e.stderr}")
             raise
     
-    def build_minimap2_index(self, prefix: Optional[str] = None) -> Path:
+    def build_minimap2_index(self, prefix: Optional[str] = None,
+                             force: bool = False) -> Path:
         """
         构建minimap2索引
         
@@ -381,8 +412,12 @@ class IndexBuilder:
         
         # 检查索引是否已存在
         if index_file.exists():
-            logger.info(f"minimap2索引已存在: {index_file}")
-            return index_file
+            if force:
+                logger.info(f"启用强制重建，删除已存在的minimap2索引: {index_file}")
+                index_file.unlink()
+            else:
+                logger.info(f"minimap2索引已存在: {index_file}")
+                return index_file
         
         logger.info(f"开始构建minimap2索引: {self.genome_fasta}")
         logger.info(f"索引文件: {index_file}")
@@ -404,7 +439,8 @@ class IndexBuilder:
             raise
     
     def build_all_indices(self, tools: Optional[List[str]] = None, 
-                         threads: int = 1, **kwargs) -> Dict[str, Any]:
+                         threads: int = 1, force: bool = False,
+                         **kwargs) -> Dict[str, Any]:
         """
         构建所有支持的索引（或指定的索引工具）
         
@@ -424,9 +460,9 @@ class IndexBuilder:
         for tool in tools:
             try:
                 if tool == 'bwa':
-                    index_path = self.build_bwa_index(threads=threads)
+                    index_path = self.build_bwa_index(threads=threads, force=force)
                 elif tool == 'bowtie2':
-                    index_path = self.build_bowtie2_index(threads=threads)
+                    index_path = self.build_bowtie2_index(threads=threads, force=force)
                 elif tool == 'star':
                     # 只有当提供了GTF文件时，才使用sjdb_overhang
                     sjdb_gtf_file = kwargs.get('sjdb_gtf_file', None)
@@ -436,12 +472,13 @@ class IndexBuilder:
                         sjdb_gtf_file=sjdb_gtf_file,
                         sjdb_overhang=sjdb_overhang,
                         threads=threads,
-                        genome_sa_index_n_bases=genome_sa_index_n_bases
+                        genome_sa_index_n_bases=genome_sa_index_n_bases,
+                        force=force
                     )
                 elif tool == 'hisat2':
-                    index_path = self.build_hisat2_index(threads=threads)
+                    index_path = self.build_hisat2_index(threads=threads, force=force)
                 elif tool == 'minimap2':
-                    index_path = self.build_minimap2_index()
+                    index_path = self.build_minimap2_index(force=force)
                 else:
                     logger.warning(f"未知的工具: {tool}")
                     continue

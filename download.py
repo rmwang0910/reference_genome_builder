@@ -179,7 +179,8 @@ class ReferenceGenomeDownloader:
         return self.ANNOTATION_SOURCES
     
     def download_from_url(self, url: str, output_filename: Optional[str] = None, 
-                         verify_checksum: bool = False, checksum: Optional[str] = None) -> Path:
+                         verify_checksum: bool = False, checksum: Optional[str] = None,
+                         force: bool = False) -> Path:
         """
         从URL下载参考基因组
         
@@ -203,16 +204,20 @@ class ReferenceGenomeDownloader:
         
         # 检查文件是否已存在
         if output_path.exists():
-            logger.info(f"文件已存在: {output_path}")
-            if verify_checksum and checksum:
-                if self._verify_file_checksum(output_path, checksum):
-                    logger.info("文件校验和验证通过")
-                    return output_path
-                else:
-                    logger.warning("文件校验和不匹配，将重新下载")
-                    output_path.unlink()
+            if force:
+                logger.info(f"文件已存在但启用强制下载，将重新下载: {output_path}")
+                output_path.unlink()
             else:
-                return output_path
+                logger.info(f"文件已存在: {output_path}")
+                if verify_checksum and checksum:
+                    if self._verify_file_checksum(output_path, checksum):
+                        logger.info("文件校验和验证通过")
+                        return output_path
+                    else:
+                        logger.warning("文件校验和不匹配，将重新下载")
+                        output_path.unlink()
+                else:
+                    return output_path
         
         logger.info(f"开始下载: {url}")
         logger.info(f"保存到: {output_path}")
@@ -252,7 +257,8 @@ class ReferenceGenomeDownloader:
             raise
     
     def download_from_source(self, source: str, species: str, 
-                            output_filename: Optional[str] = None) -> Path:
+                            output_filename: Optional[str] = None,
+                            force: bool = False) -> Path:
         """
         从预定义的数据源下载参考基因组
         
@@ -282,7 +288,7 @@ class ReferenceGenomeDownloader:
         logger.info(f"从 {source} 下载 {species} 参考基因组 ({genome_info['name']})")
         logger.info(f"描述: {genome_info['description']}")
         
-        return self.download_from_url(url, output_filename)
+        return self.download_from_url(url, output_filename, force=force)
     
     def download_annotation_from_source(
         self,

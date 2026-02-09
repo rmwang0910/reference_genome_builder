@@ -134,6 +134,11 @@ class ReferenceGenomeAgent:
             self.work_dir = Path(work_dir)
             self.work_dir.mkdir(parents=True, exist_ok=True)
         
+        # 统一输出根目录：work_dir/outputs
+        self.outputs_root = self.work_dir / "outputs"
+        self.outputs_root.mkdir(parents=True, exist_ok=True)
+        
+        # 默认的基因组和索引目录（如果尚未根据物种/数据源选择具体run目录）
         self.genomes_dir = self.work_dir / "genomes"
         self.indices_dir = self.work_dir / "indices"
         
@@ -168,18 +173,58 @@ class ReferenceGenomeAgent:
         
         tools = {}
         
+        # 辅助函数：根据source/species获取run目录名，例如 human_GRCh38.p14
+        def _get_run_name(source: str, species: str) -> str:
+            try:
+                genome_info = ReferenceGenomeDownloader.DATA_SOURCES[source.lower()][species.lower()]
+                return f"{species}_{genome_info['name']}"
+            except Exception:
+                return f"{species}_{source}"
+        
         # 下载工具（从预定义数据源下载，仅支持human和mouse）
-        def download_tool(source: str, species: str, **kwargs):
+        def download_tool(source: str, species: str, force: bool = False, **kwargs):
+            # 为本次运行创建统一结果目录：outputs/human_GRCh38.p14 等
+            run_name = _get_run_name(source, species)
+            run_root = self.outputs_root / run_name
+            genome_dir = run_root / "genome"
+            genome_dir.mkdir(parents=True, exist_ok=True)
+            indices_dir = run_root / "indices"
+            indices_dir.mkdir(parents=True, exist_ok=True)
+            
+            # 更新当前目录上下文
+            self.genomes_dir = genome_dir
+            self.indices_dir = indices_dir
+            
             downloader = ReferenceGenomeDownloader(output_dir=str(self.genomes_dir))
-            result_path = downloader.download_from_source(source, species)
+            result_path = downloader.download_from_source(source, species, force=force)
             # 返回绝对路径，确保后续任务能正确找到文件
             return result_path.resolve()
         
         # 从URL下载工具（支持任意物种）
-        def download_from_url_tool(url: str, output_filename: Optional[str] = None, **kwargs):
+        def download_from_url_tool(url: str, output_filename: Optional[str] = None,
+                                   force: bool = False, **kwargs):
             """从URL下载参考基因组，支持任意物种"""
+            # 推断run目录名：优先使用指定的output_filename，否则根据URL推断
+            from urllib.parse import urlparse
+            if output_filename:
+                base_name = Path(output_filename).stem
+            else:
+                parsed = urlparse(url)
+                base_name = Path(parsed.path).stem or "custom_genome"
+            run_name = base_name
+            
+            run_root = self.outputs_root / run_name
+            genome_dir = run_root / "genome"
+            genome_dir.mkdir(parents=True, exist_ok=True)
+            indices_dir = run_root / "indices"
+            indices_dir.mkdir(parents=True, exist_ok=True)
+            
+            # 更新当前目录上下文
+            self.genomes_dir = genome_dir
+            self.indices_dir = indices_dir
+            
             downloader = ReferenceGenomeDownloader(output_dir=str(self.genomes_dir))
-            result_path = downloader.download_from_url(url, output_filename)
+            result_path = downloader.download_from_url(url, output_filename, force=force)
             # 返回绝对路径，确保后续任务能正确找到文件
             return result_path.resolve()
         
@@ -208,7 +253,7 @@ class ReferenceGenomeAgent:
             return downloader.decompress_file(file_path_obj)
         
         # 索引构建工具
-        def build_index_tool(genome_fasta: str, tool: str, **kwargs):
+        def build_index_tool(genome_fasta: str, tool: str, force: bool = False, **kwargs):
             # 处理路径：如果是相对路径，尝试在 genomes_dir 中查找
             genome_path_obj = Path(genome_fasta)
             if not genome_path_obj.is_absolute():
@@ -231,15 +276,15 @@ class ReferenceGenomeAgent:
             
             builder = IndexBuilder(genome_path_obj, output_dir=self.indices_dir)
             if tool == 'bwa':
-                return builder.build_bwa_index(**kwargs)
+                return builder.build_bwa_index(force=force, **kwargs)
             elif tool == 'bowtie2':
-                return builder.build_bowtie2_index(**kwargs)
+                return builder.build_bowtie2_index(force=force, **kwargs)
             elif tool == 'star':
-                return builder.build_star_index(**kwargs)
+                return builder.build_star_index(force=force, **kwargs)
             elif tool == 'hisat2':
-                return builder.build_hisat2_index(**kwargs)
+                return builder.build_hisat2_index(force=force, **kwargs)
             elif tool == 'minimap2':
-                return builder.build_minimap2_index(**kwargs)
+                return builder.build_minimap2_index(force=force, **kwargs)
             else:
                 raise ValueError(f"不支持的索引工具: {tool}")
         
