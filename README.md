@@ -1,6 +1,16 @@
 # 参考基因组构建智能体
 
+[![Python](https://img.shields.io/badge/Python-3.7+-blue.svg)](https://www.python.org/)
+[![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
+
 一个智能化的参考基因组下载和索引构建工具，支持从多个数据源下载参考基因组，并使用多种主流比对工具构建索引。
+
+**核心特性**：
+- 🧠 **LLM驱动的智能决策**：使用自然语言描述需求，自动规划任务
+- 🎯 **智能推荐**：根据使用场景自动推荐最佳数据源和工具
+- ✅ **智能缓存**：相同物种自动复用，避免重复下载
+- 🔧 **多工具支持**：BWA、Bowtie2、STAR、HISAT2、minimap2
+- 🧬 **多物种支持**：人类、小鼠等内置物种，以及任意物种（通过URL下载）
 
 ## 🎯 智能体架构特性
 
@@ -69,7 +79,7 @@ python agent_main.py --recommend "WGS全基因组测序分析"
 3. 规划任务步骤
 4. 自动执行所有任务
 
-### 📋 传统模式：精确控制
+### 📋 传统模式（精确控制）
 
 如果您需要精确控制每个步骤，可以使用传统模式：
 
@@ -225,21 +235,21 @@ python agent_main.py "下载酵母参考基因组并构建BWA索引"
 ### 示例 1: WGS 数据分析准备
 
 ```bash
-# 1. 下载人类参考基因组
-python main.py download --source ncbi_refseq --species human
+# 使用智能体模式（推荐）
+python agent_main.py "我需要为WGS分析准备人类参考基因组并构建BWA索引"
 
-# 2. 构建 BWA 索引（用于比对）
-python main.py index --genome genomes/human_GRCh38.p14.fa --tools bwa --threads 16
+# 或使用传统模式
+python main.py pipeline --source ncbi_refseq --species human --tools bwa --threads 16
 ```
 
 ### 示例 2: RNA-seq 数据分析准备
 
 ```bash
-# 1. 下载人类参考基因组
-python main.py download --source ensembl --species human
+# 使用智能体模式（推荐）
+python agent_main.py "我需要为RNA-seq分析准备人类参考基因组和STAR索引"
 
-# 2. 构建 STAR 索引（用于 RNA-seq 比对）
-python main.py index --genome genomes/human_GRCh38.fa --tools star --threads 16 --sjdb-overhang 99
+# 或使用传统模式
+python main.py pipeline --source ensembl --species human --tools star --threads 16 --sjdb-overhang 99
 ```
 
 ### 示例 3: 多工具索引构建
@@ -268,6 +278,13 @@ python main.py pipeline \
 
 ## 故障排除
 
+### 问题：LLM 模块不可用
+
+**解决方案**：
+- 确保已安装 `openai` 库：`pip install openai`
+- 检查 `LLM_API_KEY` 环境变量是否设置
+- 查看 [LLM_SETUP.md](LLM_SETUP.md) 获取详细配置说明
+
 ### 问题：工具未找到
 
 **解决方案**：
@@ -280,17 +297,26 @@ python main.py pipeline \
 **可能原因**：
 - 内存不足
 - `genomeSAindexNbases` 参数设置不当（对于大基因组）
+- 对于没有注释文件的物种（如细菌），使用了 `sjdb_overhang` 参数
 
 **解决方案**：
 - 增加可用内存或使用更少的线程
 - 对于大基因组，调整 `--genome-sa-index-n-bases` 参数
+- 对于细菌等没有注释文件的物种，STAR 索引会自动跳过 `sjdb_overhang` 参数
 
 ### 问题：下载速度慢
 
 **解决方案**：
 - 检查网络连接
 - 考虑使用镜像站点
-- 使用 `wget` 或 `curl` 手动下载后放入 `genomes/` 目录
+- 使用 `wget` 或 `curl` 手动下载后放入 `outputs/<species>/genome/` 目录
+
+### 问题：路径错误
+
+**解决方案**：
+- 检查工作目录权限
+- 确保 `outputs/` 目录可写
+- 查看日志中的详细路径信息
 
 ## 许可证
 
@@ -392,7 +418,21 @@ export LLM_MODEL='gpt-4'  # OpenAI
 
 **注意**：如果未配置 LLM，程序将无法运行并提示错误。
 
+详细配置说明请参考：[LLM_SETUP.md](LLM_SETUP.md)
+
+## 项目结构
+
+详细项目结构说明请参考：[PROJECT_STRUCTURE.md](PROJECT_STRUCTURE.md)
+
 ## 更新日志
+
+### v2.0.0
+- 🎯 **统一输出目录结构**：所有结果统一到 `outputs/<species_build>/` 目录
+- ✅ **智能缓存机制**：相同物种自动复用，避免重复下载
+- 🔄 **强制参数支持**：`--force-download` 和 `--force-index` 参数
+- 🧬 **任意物种支持**：通过 URL 下载任意物种的参考基因组
+- 🐛 **Bug修复**：修复 BWA 和 minimap2 索引构建的线程参数问题
+- 📝 **文档完善**：更新 README 和测试用例文档
 
 ### v1.1.0
 - ✨ 新增智能体架构支持
@@ -408,3 +448,11 @@ export LLM_MODEL='gpt-4'  # OpenAI
 - 支持 BWA、Bowtie2、STAR、HISAT2、minimap2 索引构建
 - 完整的命令行接口
 - 自动化流程支持
+
+## 贡献
+
+欢迎提交 Issue 和 Pull Request！
+
+## 许可证
+
+本项目遵循 MIT 许可证。详见 [LICENSE](LICENSE) 文件。

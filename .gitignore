@@ -1,0 +1,80 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# 虚拟环境
+venv/
+env/
+ENV/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# 测试结果和输出
+test_results_*/
+test_*/
+outputs/
+results/
+*.log
+*.out
+
+# 下载的基因组文件（通常很大，不应该提交）
+genomes/
+*.fa
+*.fa.gz
+*.fna
+*.fna.gz
+*.fasta
+*.fasta.gz
+
+# 索引文件（通常很大，不应该提交）
+indices/
+*.bwt
+*.amb
+*.ann
+*.pac
+*.sa
+*.bt2
+*.ht2
+*.mmi
+*_star/
+
+# 状态文件
+agent_state.json
+build_results.json
+
+# 环境变量和配置
+.env
+local.conf.toml
+config.yaml
+
+# 操作系统
+.DS_Store
+Thumbs.db
+
+# 临时文件
+*.tmp
+*.bak
+*.swp
